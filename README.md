@@ -1,4 +1,4 @@
-# aws-ecs-exec-command-cli
+# secret_manager_cli
 
 AWS aws-secret-manager-cli tool is aimed to :
 
