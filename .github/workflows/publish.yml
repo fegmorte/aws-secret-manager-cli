@@ -1,0 +1,165 @@
+name: Publish Python 🐍 distribution 📦 to PyPI and TestPyPI
+
+on: 
+  push:
+    branches:
+      - master
+
+jobs:
+  # Generate tag and changelog
+  tag: 
+    name: Push tag
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.generate_tag.outputs.new_tag }}
+      changelog: ${{ steps.build_changelog.outputs.changelog }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: '0'
+      - name: Generate tag
+        id: generate_tag
+        uses: anothrNick/github-tag-action@1.64.0 # Don't use @master or @v1 unless you're happy to test the latest version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }} # if you don't want to set write permissions use a PAT token
+          WITH_V: false
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v4.1.1       
+
+  # Build job for building python package
+  # store them in /dist
+  build:
+    name: Build distribution 📦
+    needs:
+      - tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'     
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+      - name: Add poetry-dynamic-versioning
+        run: |      
+          poetry self add "poetry-dynamic-versioning[plugin]"          
+      - name: Setup a local virtual environment (if no poetry.toml file)
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+      - uses: actions/cache@v3
+        name: Define a cache for the virtual environment based on the dependencies lock file
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}
+      - name: Poetry dynamic versionning
+        run: |
+          poetry dynamic-versioning
+      - name: Poetry build package
+        run: |
+          poetry build
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+  
+  # Create github-release:
+  #   - generate tag
+  #   - generate Changelog
+  #   - create the release
+  #   - add the dist to the release
+  github-release: 
+    name: Create GH release
+    needs:
+      - build
+      - tag
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # IMPORTANT: mandatory for making GitHub Releases
+      id-token: write  # IMPORTANT: mandatory for sigstore
+
+    steps:   
+      - name: Download all the dists
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Sign the dists with Sigstore
+        uses: sigstore/gh-action-sigstore-python@v1.2.3
+        with:
+          inputs: >-
+            ./dist/*.tar.gz
+            ./dist/*.whl
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: >-
+          gh release create
+          '${{needs.tag.outputs.new_tag}}'
+          --title '${{needs.tag.outputs.new_tag}}'
+          --repo '${{ github.repository }}'
+          --notes '${{needs.tag.outputs.changelog}}'
+      - name: Upload artifact signatures to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # Upload to GitHub Release using the `gh` CLI.
+        # `dist/` contains the built packages, and the
+        # sigstore-produced signatures and certificates.
+        run: >-
+          gh release upload
+          '${{needs.tag.outputs.new_tag}}' dist/**
+          --repo '${{ github.repository }}'
+
+  # Publish package to PyPI
+  publish-to-pypi:
+    name: >-
+      Publish Python 🐍 distribution 📦 to PyPI
+    needs:
+    - github-release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ecs-connect-cli  # Replace <package-name> with your PyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'     
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+      - name: Add poetry-dynamic-versioning
+        run: |      
+          poetry self add "poetry-dynamic-versioning[plugin]"          
+      - name: Setup a local virtual environment (if no poetry.toml file)
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+      - uses: actions/cache@v3
+        name: Define a cache for the virtual environment based on the dependencies lock file
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}
+      - name: Download all the dists
+        uses: actions/download-artifact@v3
+        with:
+          name: python-package-distributions
+          path: dist/     
+      - name: Publish distribution 📦 to PyPI
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+          poetry publish
