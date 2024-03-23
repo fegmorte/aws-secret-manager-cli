@@ -30,40 +30,15 @@ def get_session(
             session = boto3.Session(profile_name=profile)
         
         client = session.client(resource)
-        
-        if resource == "ecs":
-            if action == "list_clusters":
-                response = client.list_clusters(maxResults=20)
-
-            if action == "list_services":
-                response = client.list_services(
-                    cluster=cluster_name,
-                    maxResults=50,
-                    launchType="FARGATE",
-                )
-
-            if action == "list_tasks":
-                response = client.list_tasks(
-                    cluster=cluster_name,
-                    maxResults=100,
-                    serviceName=service_name,
-                )
-
-            if action == "describe_tasks":
-                response = client.describe_tasks(
-                    cluster=cluster_name,
-                    tasks=[
-                        task_name,
-                    ],
-                )
-
-            if action == "describe_task_definition":
-                response = client.describe_task_definition(
-                    taskDefinition=task_definition_arn,
-                )
 
         if resource == "secretsmanager":
-            return client
+            if action == "list_secret_name":
+                response = client.list_secrets(
+                    MaxResults=100,
+                    SortOrder='asc'
+                )
+            else:
+                return client
         
     except Exception as Err:
         print(f"ERROR: {Err}")

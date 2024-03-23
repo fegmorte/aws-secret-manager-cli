@@ -1,10 +1,7 @@
 from secret_manager_cli.credentials import check_credentials
 from secret_manager_cli.credentials import which_credentials
 from secret_manager_cli.credentials import which_region
-from secret_manager_cli.helpers import get_cluster_name
-from secret_manager_cli.helpers import get_container_name
-from secret_manager_cli.helpers import get_service_name
-from secret_manager_cli.helpers import get_task_arn
+from secret_manager_cli.helpers import get_secret_name
 
 
 def make_choice(
@@ -28,23 +25,9 @@ def make_choice(
 
     list_results = ""
 
-    # choose_container
-    if choice == "container_name":
-        list_results = get_container_name(
-            profile, cluster_name, task_name.partition("/")[2].partition("/")[2]
-        )
-
-    # choose_task
-    elif choice == "task_arn":
-        list_results = get_task_arn(profile, cluster_name, service_name)
-
-    # choose_service
-    elif choice == "service_name":
-        list_results = get_service_name(profile, cluster_name)
-
-    # choose_cluster
-    elif choice == "cluster_name":
-        list_results = get_cluster_name(profile)
+    # choose_secret
+    if choice == "secret_name":
+        list_results = get_secret_name(profile)
 
     # choose_credentials_profile
     elif choice == "profile_name":
@@ -55,7 +38,8 @@ def make_choice(
         list_results = which_credentials()
 
     # choose which region to use
-    elif choice == "region_name":
+    elif choice == "region":
         list_results = which_region()
+
 
     return list_results
